@@ -53,6 +53,7 @@
     <module>type_annotations</module>
     <module>docgen</module>
     <module>docgen_processor</module>
+    <module>ant</module>
     <module>refaster</module>
   </modules>
 
