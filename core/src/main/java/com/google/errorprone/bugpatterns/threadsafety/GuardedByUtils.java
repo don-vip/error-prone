@@ -47,7 +47,7 @@ public class GuardedByUtils {
   static ImmutableSet<String> getGuardValues(Tree tree, VisitorState state) {
     Symbol sym = getSymbol(tree);
     if (sym == null) {
-      return null;
+      return ImmutableSet.of();
     }
     return getAnnotationValueAsStrings(sym, "GuardedBy");
   }
