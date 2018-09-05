@@ -141,6 +141,7 @@ public final class Unused extends BugChecker implements CompilationUnitTreeMatch
           "javax.persistence.Id",
           "javax.persistence.Version",
           "javax.xml.bind.annotation.XmlElement",
+          "org.junit.Rule",
           "org.mockito.Mock",
           "org.openqa.selenium.support.FindBy",
           "org.openqa.selenium.support.FindBys");
@@ -151,6 +152,10 @@ public final class Unused extends BugChecker implements CompilationUnitTreeMatch
   private static final ImmutableSet<String> EXEMPTING_SUPER_TYPES =
       ImmutableSet.of(
           );
+
+  /** The set of types exempting a field of type extending them. */
+  private static final ImmutableSet<String> EXEMPTING_FIELD_SUPER_TYPES =
+      ImmutableSet.of("org.junit.rules.TestRule");
 
   private static final ImmutableList<String> SPECIAL_FIELDS =
       ImmutableList.of(
@@ -247,11 +252,15 @@ public final class Unused extends BugChecker implements CompilationUnitTreeMatch
         if (isSuppressed(variableTree)) {
           return null;
         }
-        super.visitVariable(variableTree, unused);
         VarSymbol symbol = getSymbol(variableTree);
         if (symbol == null) {
           return null;
         }
+        if (symbol.getKind() == ElementKind.FIELD
+            && exemptedFieldBySuperType(getType(variableTree), state)) {
+          return null;
+        }
+        super.visitVariable(variableTree, null);
         // Return if the element is exempted by an annotation.
         if (exemptedByAnnotation(
             variableTree.getModifiers().getAnnotations(), EXEMPTING_VARIABLE_ANNOTATIONS, state)) {
@@ -282,6 +291,11 @@ public final class Unused extends BugChecker implements CompilationUnitTreeMatch
             break;
         }
         return null;
+      }
+
+      private boolean exemptedFieldBySuperType(Type type, VisitorState state) {
+        return EXEMPTING_FIELD_SUPER_TYPES.stream()
+            .anyMatch(t -> isSubtype(type, state.getTypeFromString(t), state));
       }
 
       private boolean isFieldEligibleForChecking(VariableTree variableTree, VarSymbol symbol) {
@@ -659,16 +673,20 @@ public final class Unused extends BugChecker implements CompilationUnitTreeMatch
         VariableTree variableTree = (VariableTree) statement;
         if (hasSideEffect(((VariableTree) statement).getInitializer())) {
           encounteredSideEffects = true;
-          String newContent = "";
           if (varKind == ElementKind.FIELD) {
-            newContent =
+            String newContent =
                 String.format(
                     "%s{ %s; }",
-                    varSymbol.isStatic() ? "static " : "", variableTree.getInitializer());
+                    varSymbol.isStatic() ? "static " : "",
+                    state.getSourceForNode(variableTree.getInitializer()));
+            fix.merge(replaceWithComments(usagePath, newContent, state));
+            removeSideEffectsFix.replace(statement, "");
+          } else {
+            fix.replace(
+                statement,
+                String.format("%s;", state.getSourceForNode(variableTree.getInitializer())));
+            removeSideEffectsFix.replace(statement, "");
           }
-          SuggestedFix replacement = replaceWithComments(usagePath, newContent, state);
-          fix.merge(replacement);
-          removeSideEffectsFix.merge(replacement);
         } else if (isEnhancedForLoopVar(usagePath)) {
           String newContent =
               String.format(
